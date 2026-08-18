@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.guard-diffs/
+.env
+.env.local
+*.log

@@ -1,0 +1,47 @@
+{
+  "name": "guard-insforge",
+  "version": "1.0.0",
+  "description": "Deterministic safety gate for AI agents making schema changes via InsForge database branching",
+  "main": "./dist/cli.js",
+  "bin": {
+    "guard": "./dist/cli.js",
+    "guard-insforge": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/cli.ts",
+    "test": "ts-node test/classifier.test.ts",
+    "demo:safe": "ts-node src/cli.ts apply safe-demo --sql examples/safe-change.sql",
+    "demo:destructive": "ts-node src/cli.ts apply dest-demo --sql examples/destructive-change.sql",
+    "demo:approve": "ts-node src/cli.ts approve dest-demo",
+    "demo:cleanup": "ts-node src/cli.ts cleanup dest-demo"
+  },
+  "keywords": [
+    "insforge",
+    "database-branching",
+    "ai-agent",
+    "schema-guard",
+    "safety-gate",
+    "cli"
+  ],
+  "author": "Aditya Kudale",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aditya3799/guard-insforge.git"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
