@@ -1,6 +1,7 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { stripSqlComments } from './classifier';
 
 export interface BranchOpOptions {
   mock?: boolean;
@@ -22,13 +23,14 @@ const mockBranches = new Set<string>();
  */
 export function isInsForgeAuthenticated(): boolean {
   try {
-    const stdout = execSync('npx -y @insforge/cli whoami', {
+    const res = spawnSync('npx -y @insforge/cli whoami', {
+      shell: true,
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
       timeout: 15000
     });
-    // If not logged in, whoami prints "You need to log in to continue." or errors
-    return !/need to log in|error|not logged in/i.test(stdout) && stdout.trim().length > 0;
+    const stdout = res.stdout || '';
+    return res.status === 0 && !/need to log in|error|not logged in/i.test(stdout) && stdout.trim().length > 0;
   } catch {
     return false;
   }
@@ -45,23 +47,42 @@ function runInsForgeCmd(args: string[], options: BranchOpOptions = {}): ExecResu
   }
 
   try {
-    const stdout = execSync(cliCmd, {
+    const res = spawnSync(cliCmd, {
+      shell: true,
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe']
+      windowsHide: true,
+      timeout: 60000
     });
-    return { stdout, stderr: '', exitCode: 0 };
-  } catch (err: any) {
-    const stdout = err.stdout?.toString() || '';
-    const stderr = err.stderr?.toString() || err.message || '';
+
+    const stdout = res.stdout || '';
+    let stderr = res.stderr || '';
     const combinedOutput = `${stdout}\n${stderr}`;
 
     const isConflict = /conflict|merge failed|diverged|already exists/i.test(combinedOutput);
 
+    if (res.status !== 0) {
+      // Extract human-readable error, filtering out Node/libuv Windows assertion messages
+      let cleanErr = (stderr || stdout || 'Command returned non-zero exit code').trim();
+      cleanErr = cleanErr
+        .replace(/Assertion failed:.*$/gm, '')
+        .replace(/file src\\win\\async\.c, line \d+/gm, '')
+        .trim();
+
+      return {
+        stdout,
+        stderr: cleanErr || stdout.trim() || 'InsForge CLI request rejected',
+        exitCode: res.status || 1,
+        isConflict
+      };
+    }
+
+    return { stdout, stderr: '', exitCode: 0 };
+  } catch (err: any) {
     return {
-      stdout,
-      stderr,
-      exitCode: err.status || 1,
-      isConflict
+      stdout: '',
+      stderr: err.message || 'Subprocess execution failed',
+      exitCode: 1,
+      isConflict: false
     };
   }
 }
@@ -87,11 +108,68 @@ export function createBranch(name: string, sqlInputPath?: string, options: Branc
     };
   }
 
-  return runInsForgeCmd(['branch', 'create', name], options);
+  // 1. Check existing branches and auto-prune any 'merged' branches to keep quota free
+  try {
+    const listRes = runInsForgeCmd(['branch', 'list'], options);
+    if (listRes.exitCode === 0 && listRes.stdout) {
+      // Find any merged branches in the table output and prune them
+      const lines = listRes.stdout.split('\n');
+      for (const line of lines) {
+        if (line.includes('merged')) {
+          const match = line.match(/│\s*([^\s│]+)\s*│\s*merged\s*│/);
+          if (match && match[1]) {
+            const mergedBranchName = match[1].trim();
+            if (options.verbose) {
+              console.log(`[QUOTA PRUNE] Deleting merged branch "${mergedBranchName}" to free quota...`);
+            }
+            runInsForgeCmd(['branch', 'delete', mergedBranchName], options);
+          }
+        }
+      }
+
+      // Check if target branch already exists and is ready
+      const isTargetReady = lines.some(l => l.includes(name) && l.includes('ready'));
+      if (isTargetReady) {
+        return {
+          stdout: `✓ Branch "${name}" already exists and is ready.`,
+          stderr: '',
+          exitCode: 0
+        };
+      }
+    }
+  } catch {
+    // Ignore list/prune errors and attempt branch creation directly
+  }
+
+  const createRes = runInsForgeCmd(['branch', 'create', name], options);
+
+  // If branch was created or is provisioning / already exists, poll until 'ready'
+  const isCreatingOrExists =
+    createRes.exitCode === 0 ||
+    /creating|provisioning|already exists/i.test(`${createRes.stdout}\n${createRes.stderr}`);
+
+  if (isCreatingOrExists) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < 45000) {
+      const listRes = runInsForgeCmd(['branch', 'list'], options);
+      if (listRes.stdout && listRes.stdout.includes(name) && listRes.stdout.includes('ready')) {
+        return {
+          stdout: `✓ Created branch "${name}" from parent project snapshot. State: ready.`,
+          stderr: '',
+          exitCode: 0
+        };
+      }
+      // Synchronous sleep 3s
+      const sleepStart = Date.now();
+      while (Date.now() - sleepStart < 3000) {}
+    }
+  }
+
+  return createRes;
 }
 
 /**
- * Applies SQL schema changes to an isolated branch.
+ * Applies SQL schema changes to an isolated branch via InsForge CLI db query --unrestricted.
  */
 export function applySqlToBranch(name: string, sqlFilePath: string, options: BranchOpOptions = {}): ExecResult {
   if (!fs.existsSync(sqlFilePath)) {
@@ -106,18 +184,42 @@ export function applySqlToBranch(name: string, sqlFilePath: string, options: Bra
     };
   }
 
-  // Switch to branch or execute sql import against branch context
+  // Switch to branch context
   const switchRes = runInsForgeCmd(['branch', 'switch', name], options);
   if (switchRes.exitCode !== 0) {
     return switchRes;
   }
 
-  const importRes = runInsForgeCmd(['db', 'import', sqlFilePath], options);
+  // Read and clean the SQL, then split into individual statements
+  const rawSql = fs.readFileSync(sqlFilePath, 'utf-8');
+  const cleanSql = stripSqlComments(rawSql).trim();
+  const statements = cleanSql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 
-  // Switch back to parent
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    const qRes = runInsForgeCmd(['db', 'query', '--unrestricted', `"${stmt.replace(/"/g, '\\"')}"`], options);
+
+    if (qRes.exitCode !== 0) {
+      runInsForgeCmd(['branch', 'switch', '--parent'], options);
+      return {
+        stdout: '',
+        stderr: `Statement ${i + 1}/${statements.length} failed: ${qRes.stderr || qRes.stdout}`,
+        exitCode: 1
+      };
+    }
+  }
+
+  // Switch back to parent context
   runInsForgeCmd(['branch', 'switch', '--parent'], options);
 
-  return importRes;
+  return {
+    stdout: `✓ Executed ${statements.length} SQL statement(s) on branch "${name}".`,
+    stderr: '',
+    exitCode: 0
+  };
 }
 
 /**

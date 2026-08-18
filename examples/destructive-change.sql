@@ -1,19 +1,19 @@
 -- Destructive Database Schema Migration Example
--- Features: DROP COLUMN, TRUNCATE TABLE, ALTER COLUMN TYPE
+-- Features: DROP COLUMN, TRUNCATE TABLE
 
--- 1. Setup table in current migration context:
-CREATE TABLE IF NOT EXISTS temp_user_data (
+-- 1. Ensure prerequisite demo tables exist:
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
-    phone_number TEXT,
-    session_token TEXT,
-    amount NUMERIC
+    role TEXT
 );
 
--- 2. Destructive: Drop column from active table
-ALTER TABLE temp_user_data DROP COLUMN phone_number;
+CREATE TABLE IF NOT EXISTS tasks (
+    id UUID PRIMARY KEY,
+    title TEXT
+);
 
--- 3. Destructive: Remove all data from table
-TRUNCATE TABLE temp_user_data;
+-- 2. Destructive: Drop column from users table
+ALTER TABLE users DROP COLUMN IF EXISTS role;
 
--- 4. Destructive: Change column data type
-ALTER TABLE temp_user_data ALTER COLUMN amount TYPE INTEGER;
+-- 3. Destructive: Truncate tasks table
+TRUNCATE TABLE tasks;
