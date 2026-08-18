@@ -14,6 +14,5 @@ CREATE INDEX IF NOT EXISTS idx_user_prefs_theme ON user_preferences(theme);
 
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can manage their own preferences" ON user_preferences;
 CREATE POLICY "Users can manage their own preferences" ON user_preferences
     FOR ALL USING (auth.uid() = user_id);

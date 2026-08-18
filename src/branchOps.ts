@@ -23,7 +23,7 @@ const mockBranches = new Set<string>();
  */
 export function isInsForgeAuthenticated(): boolean {
   try {
-    const res = spawnSync('npx -y @insforge/cli whoami', {
+    const res = spawnSync('npx.cmd -y @insforge/cli whoami', {
       shell: true,
       encoding: 'utf-8',
       windowsHide: true,
