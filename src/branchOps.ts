@@ -37,18 +37,19 @@ export function isInsForgeAuthenticated(): boolean {
 }
 
 /**
- * Executes an InsForge CLI command as a subprocess.
+ * Executes an InsForge CLI command as a subprocess without shell interpolation.
  */
 function runInsForgeCmd(args: string[], options: BranchOpOptions = {}): ExecResult {
-  const cliCmd = `npx -y @insforge/cli -y ${args.join(' ')}`;
+  const isWindows = process.platform === 'win32';
+  const command = isWindows ? 'npx.cmd' : 'npx';
+  const fullArgs = ['-y', '@insforge/cli', '-y', ...args];
 
   if (options.verbose) {
-    console.log(`[EXEC] ${cliCmd}`);
+    console.log(`[EXEC] ${command} ${fullArgs.join(' ')}`);
   }
 
   try {
-    const res = spawnSync(cliCmd, {
-      shell: true,
+    const res = spawnSync(command, fullArgs, {
       encoding: 'utf-8',
       windowsHide: true,
       timeout: 60000
@@ -61,7 +62,6 @@ function runInsForgeCmd(args: string[], options: BranchOpOptions = {}): ExecResu
     const isConflict = /conflict|merge failed|diverged|already exists/i.test(combinedOutput);
 
     if (res.status !== 0) {
-      // Extract human-readable error, filtering out Node/libuv Windows assertion messages
       let cleanErr = (stderr || stdout || 'Command returned non-zero exit code').trim();
       cleanErr = cleanErr
         .replace(/Assertion failed:.*$/gm, '')
@@ -112,7 +112,6 @@ export function createBranch(name: string, sqlInputPath?: string, options: Branc
   try {
     const listRes = runInsForgeCmd(['branch', 'list'], options);
     if (listRes.exitCode === 0 && listRes.stdout) {
-      // Find any merged branches in the table output and prune them
       const lines = listRes.stdout.split('\n');
       for (const line of lines) {
         if (line.includes('merged')) {
@@ -159,7 +158,6 @@ export function createBranch(name: string, sqlInputPath?: string, options: Branc
           exitCode: 0
         };
       }
-      // Synchronous sleep 3s
       const sleepStart = Date.now();
       while (Date.now() - sleepStart < 3000) {}
     }
@@ -200,7 +198,8 @@ export function applySqlToBranch(name: string, sqlFilePath: string, options: Bra
 
   for (let i = 0; i < statements.length; i++) {
     const stmt = statements[i];
-    const qRes = runInsForgeCmd(['db', 'query', '--unrestricted', `"${stmt.replace(/"/g, '\\"')}"`], options);
+    // Pass raw statement directly without manual quote wrapping; spawnSync handles argument passing
+    const qRes = runInsForgeCmd(['db', 'query', '--unrestricted', stmt], options);
 
     if (qRes.exitCode !== 0) {
       runInsForgeCmd(['branch', 'switch', '--parent'], options);
