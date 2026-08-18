@@ -25,7 +25,7 @@ export function isInsForgeAuthenticated(): boolean {
     const stdout = execSync('npx -y @insforge/cli whoami', {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 3000
+      timeout: 15000
     });
     // If not logged in, whoami prints "You need to log in to continue." or errors
     return !/need to log in|error|not logged in/i.test(stdout) && stdout.trim().length > 0;
