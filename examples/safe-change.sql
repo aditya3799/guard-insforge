@@ -8,9 +8,12 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE user_preferences ADD COLUMN locale VARCHAR(10) DEFAULT 'en-US';
+ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS locale VARCHAR(10) DEFAULT 'en-US';
 
-CREATE INDEX idx_user_prefs_theme ON user_preferences(theme);
+CREATE INDEX IF NOT EXISTS idx_user_prefs_theme ON user_preferences(theme);
 
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage their own preferences" ON user_preferences;
 CREATE POLICY "Users can manage their own preferences" ON user_preferences
     FOR ALL USING (auth.uid() = user_id);
