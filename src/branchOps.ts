@@ -50,6 +50,7 @@ function runInsForgeCmd(args: string[], options: BranchOpOptions = {}): ExecResu
 
   try {
     const res = spawnSync(command, fullArgs, {
+      shell: true, // Required on Windows so output streams of .cmd files aren't dropped
       encoding: 'utf-8',
       windowsHide: true,
       timeout: 60000
@@ -115,7 +116,8 @@ export function createBranch(name: string, sqlInputPath?: string, options: Branc
       const lines = listRes.stdout.split('\n');
       for (const line of lines) {
         if (line.includes('merged')) {
-          const match = line.match(/│\s*([^\s│]+)\s*│\s*merged\s*│/);
+          // Adjust regex to match table pipes more safely
+          const match = line.match(/│[^│]*│\s*([^\s│]+)\s*│\s*merged\s*│/);
           if (match && match[1]) {
             const mergedBranchName = match[1].trim();
             if (options.verbose) {
@@ -198,14 +200,24 @@ export function applySqlToBranch(name: string, sqlFilePath: string, options: Bra
 
   for (let i = 0; i < statements.length; i++) {
     const stmt = statements[i];
-    // Pass raw statement directly without manual quote wrapping; spawnSync handles argument passing
-    const qRes = runInsForgeCmd(['db', 'query', '--unrestricted', stmt], options);
+    
+    // Manually escape double quotes and wrap the entire statement in double quotes.
+    // Node's spawnSync with shell: true on Windows concatenates arguments with spaces,
+    // so we must provide our own cmd.exe-compatible quoting to prevent 'too many arguments' errors.
+    const escapedStmt = `"${stmt.replace(/"/g, '\\"')}"`;
+    
+    const qResRaw = spawnSync('npx.cmd', ['-y', '@insforge/cli', '-y', 'db', 'query', '--unrestricted', escapedStmt], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      shell: true,
+      timeout: 60000
+    });
 
-    if (qRes.exitCode !== 0) {
+    if (qResRaw.status !== 0) {
       runInsForgeCmd(['branch', 'switch', '--parent'], options);
       return {
         stdout: '',
-        stderr: `Statement ${i + 1}/${statements.length} failed: ${qRes.stderr || qRes.stdout}`,
+        stderr: `Statement ${i + 1}/${statements.length} failed: ${qResRaw.stderr || qResRaw.stdout || 'Unknown error'}`,
         exitCode: 1
       };
     }

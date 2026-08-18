@@ -192,6 +192,23 @@ export function classifySql(sqlContent: string): ClassificationResult {
   const statements = splitSqlStatements(sqlContent);
   const classified = statements.map((stmt, idx) => classifyStatement(stmt, idx + 1));
 
+  // InsForge branch merge --dry-run hides table modifications (like DROP COLUMN) behind comments
+  // and refuses to output the actual SQL. We must detect these comments before they are stripped.
+  const hasHiddenModifications = /--\s*not auto-applied:\s*table modify diffs/i.test(sqlContent) || 
+                                 /--\s*\[DDL\]\s*table.*\(modify\)/i.test(sqlContent);
+
+  if (hasHiddenModifications) {
+    classified.push({
+      index: classified.length + 1,
+      rawSql: '-- [DDL] table (modify) - not auto-applied',
+      normalizedSql: 'hidden table modification',
+      category: 'REVIEW',
+      isSafe: false,
+      matchedRule: 'UNSUPPORTED_TABLE_MODIFICATION',
+      reason: 'Review Required: InsForge CLI detected table modifications (e.g. ALTER TABLE) but cannot auto-apply them in a diff. A manual migration is required.'
+    });
+  }
+
   const destructiveStatements = classified.filter(c => c.category === 'DESTRUCTIVE');
   const reviewStatements = classified.filter(c => c.category === 'REVIEW');
   const safeStatements = classified.filter(c => c.category === 'SAFE');
