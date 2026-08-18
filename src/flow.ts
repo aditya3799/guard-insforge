@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import pc from 'picocolors';
 import {
   createBranch,
@@ -49,13 +50,45 @@ function resolveExecutionOptions<T extends BranchOpOptions>(options: T): T {
 }
 
 /**
+ * Resolves local file path or downloads remote HTTP(S) URL to a temporary local SQL file.
+ */
+function resolveSqlInputPath(sqlPathInput: string, changeName: string): string {
+  if (sqlPathInput.startsWith('http://') || sqlPathInput.startsWith('https://')) {
+    console.log(pc.dim(`🌐 Fetching remote SQL file from ${sqlPathInput}...`));
+    const tempDir = path.join(process.cwd(), '.guard-diffs');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFile = path.join(tempDir, `${changeName}-remote.sql`);
+    try {
+      const b64 = Buffer.from(sqlPathInput).toString('base64');
+      const script = `const u=Buffer.from('${b64}','base64').toString('utf-8');(u.startsWith('https')?require('https'):require('http')).get(u,r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.stdout.write(d));}).on('error',e=>{console.error(e.message);process.exit(1);});`;
+      const content = execSync(`node -e "${script}"`, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      fs.writeFileSync(tempFile, content, 'utf-8');
+      return tempFile;
+    } catch (err: any) {
+      throw new Error(`Failed to fetch remote SQL file (${sqlPathInput}): ${err.message}`);
+    }
+  }
+  return sqlPathInput;
+}
+
+/**
  * Orchestrates: create -> apply -> dry-run -> classify -> merge or hold
  */
-export function applyFlow(changeName: string, sqlPath: string, options: ApplyFlowOptions = {}): FlowResult {
+export function applyFlow(changeName: string, sqlPathInput: string, options: ApplyFlowOptions = {}): FlowResult {
   const resolvedOpts = resolveExecutionOptions(options);
 
   console.log(pc.cyan(`\n🛡️  InsForge Agent Change Guard — Evaluating Proposed Change: "${changeName}"`));
-  console.log(pc.dim(`   SQL File: ${sqlPath}\n`));
+  console.log(pc.dim(`   SQL Input: ${sqlPathInput}\n`));
+
+  let sqlPath: string;
+  try {
+    sqlPath = resolveSqlInputPath(sqlPathInput, changeName);
+  } catch (err: any) {
+    console.error(pc.red(`❌ Error: ${err.message}`));
+    return { success: false, outcome: 'ERROR', exitCode: 1, message: err.message };
+  }
 
   if (!fs.existsSync(sqlPath)) {
     const msg = `SQL file not found at path: ${sqlPath}`;
