@@ -74,6 +74,20 @@ const DESTRUCTIVE_RULES: SafetyRule[] = [
 
 const SAFE_RULES: SafetyRule[] = [
   {
+    name: 'TRANSACTION CONTROL',
+    category: 'SAFE',
+    isSafe: true,
+    pattern: /^\s*(?:BEGIN|COMMIT|ROLLBACK|END|SET\s+.*)\b/i,
+    reason: 'Safe: Transaction boundary or session configuration.'
+  },
+  {
+    name: 'ENABLE ROW LEVEL SECURITY',
+    category: 'SAFE',
+    isSafe: true,
+    pattern: /\bALTER\s+TABLE\s+.*\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\b/i,
+    reason: 'Safe: Enables security guardrails.'
+  },
+  {
     name: 'CREATE TABLE',
     category: 'SAFE',
     isSafe: true,

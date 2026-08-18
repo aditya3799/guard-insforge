@@ -47,6 +47,16 @@ test('Classifies CREATE POLICY as SAFE', () => {
   assert.strictEqual(res.matchedRule, 'CREATE POLICY');
 });
 
+test('Classifies BEGIN and COMMIT as SAFE TRANSACTION CONTROL', () => {
+  const res1 = classifyStatement('BEGIN;');
+  assert.strictEqual(res1.isSafe, true);
+  assert.strictEqual(res1.matchedRule, 'TRANSACTION CONTROL');
+
+  const res2 = classifyStatement('COMMIT;');
+  assert.strictEqual(res2.isSafe, true);
+  assert.strictEqual(res2.matchedRule, 'TRANSACTION CONTROL');
+});
+
 // 2. Destructive statements test
 test('Classifies DROP TABLE as DESTRUCTIVE', () => {
   const res = classifyStatement('DROP TABLE sensitive_logs;');

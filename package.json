@@ -1,6 +1,6 @@
 {
   "name": "guard-insforge",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "Deterministic safety gate for AI agents making schema changes via InsForge database branching",
   "main": "./dist/cli.js",
   "bin": {

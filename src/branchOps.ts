@@ -38,7 +38,7 @@ export function isInsForgeAuthenticated(): boolean {
  * Executes an InsForge CLI command as a subprocess.
  */
 function runInsForgeCmd(args: string[], options: BranchOpOptions = {}): ExecResult {
-  const cliCmd = `npx -y @insforge/cli ${args.join(' ')}`;
+  const cliCmd = `npx -y @insforge/cli -y ${args.join(' ')}`;
 
   if (options.verbose) {
     console.log(`[EXEC] ${cliCmd}`);
