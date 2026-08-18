@@ -1,8 +1,8 @@
 -- Destructive Database Schema Migration Example
 -- Features: DROP COLUMN, TRUNCATE TABLE, ALTER COLUMN TYPE
 
--- 1. Setup prerequisite tables (safe additive setup):
-CREATE TABLE IF NOT EXISTS users (
+-- 1. Setup prerequisite demo tables (safe additive setup):
+CREATE TABLE IF NOT EXISTS demo_users (
     id UUID PRIMARY KEY,
     phone_number TEXT
 );
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- 2. Destructive: Drop column from active table
-ALTER TABLE users DROP COLUMN phone_number;
+ALTER TABLE demo_users DROP COLUMN phone_number;
 
 -- 3. Destructive: Remove all data from table
 TRUNCATE TABLE session_cache;
